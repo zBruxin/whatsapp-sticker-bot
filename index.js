@@ -2,6 +2,8 @@ const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLat
 const sharp = require('sharp')
 const QRCode = require('qrcode')
 const fs = require('fs')
+let modoConverter = false
+let timerConverter = null
 
 async function startBot() {
     const { version } = await fetchLatestBaileysVersion()
@@ -89,12 +91,37 @@ async function startBot() {
             return
         }
 
-        // !converter — figurinha WebP, imagem com !converter ou documento com !converter
+        // !converter — figurinha WebP, imagem com !converter ou modo sessão ativo
         const isConverterImage = type === 'imageMessage' && msg.message.imageMessage?.caption?.toLowerCase() === '!converter'
         const isConverterDoc = type === 'documentMessage' && msg.message.documentMessage?.caption?.toLowerCase() === '!converter'
         const isSticker = type === 'stickerMessage'
+        const isModoConverterAtivo = modoConverter && msg.key.fromMe && (type === 'imageMessage' || type === 'documentMessage')
 
-        if (isSticker || isConverterImage || isConverterDoc) {
+        // ativa o modo sessão
+        if (cmd === '!converter' && !modoConverter) {
+            modoConverter = true
+            await sock.sendMessage(from, { text: '🔄 Modo converter ativado! Manda as imagens que quiser.\nManda *!parar* pra desativar.' })
+            return
+        }
+
+        // desativa o modo sessão
+        if (cmd === '!parar' && modoConverter) {
+            modoConverter = false
+            if (timerConverter) clearTimeout(timerConverter)
+            await sock.sendMessage(from, { text: '✅ Modo converter desativado!' })
+            return
+        }
+
+        if (isSticker || isConverterImage || isConverterDoc || isModoConverterAtivo) {
+            // renova o timer a cada imagem recebida
+            if (modoConverter) {
+                if (timerConverter) clearTimeout(timerConverter)
+                timerConverter = setTimeout(async () => {
+                    modoConverter = false
+                    await sock.sendMessage(from, { text: '⏱️ Modo converter desativado por inatividade.' })
+                }, 60000) // 60 segundos sem imagem desativa sozinho
+            }
+
             try {
                 await sock.sendMessage(from, { text: '⏳ Convertendo imagem...' })
                 const { downloadMediaMessage } = require('@whiskeysockets/baileys')

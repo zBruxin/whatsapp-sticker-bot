@@ -50,6 +50,8 @@ async function startBot() {
         const type = Object.keys(msg.message)[0]
         const body = msg.message.conversation || msg.message.extendedTextMessage?.text || ''
         const cmd = body.trim().toLowerCase()
+        const meuNumero = sock.user.id.split(':')[0] + '@s.whatsapp.net'
+        if (from !== meuNumero) return
         console.log(`📨 [${type}] de ${from}: ${cmd || '(mídia)'}`)
 
         if (cmd === '!ping') {
@@ -94,7 +96,6 @@ async function startBot() {
         // !converter — figurinha WebP, imagem com !converter ou modo sessão ativo
         const isConverterImage = type === 'imageMessage' && msg.message.imageMessage?.caption?.toLowerCase() === '!converter'
         const isConverterDoc = type === 'documentMessage' && msg.message.documentMessage?.caption?.toLowerCase() === '!converter'
-        const isSticker = type === 'stickerMessage'
         const isModoConverterAtivo = modoConverter && msg.key.fromMe && (type === 'imageMessage' || type === 'documentMessage')
 
         // ativa o modo sessão
@@ -112,7 +113,7 @@ async function startBot() {
             return
         }
 
-        if (isSticker || isConverterImage || isConverterDoc || isModoConverterAtivo) {
+        if ( isConverterImage || isConverterDoc || isModoConverterAtivo) {
             // renova o timer a cada imagem recebida
             if (modoConverter) {
                 if (timerConverter) clearTimeout(timerConverter)
@@ -134,6 +135,131 @@ async function startBot() {
             } catch (e) {
                 console.error(e)
                 await sock.sendMessage(from, { text: '❌ Erro ao converter.' })
+            }
+            return
+        }
+
+        // !jpg — converte imagem pra JPG
+        const isJpg = type === 'imageMessage' && msg.message.imageMessage?.caption?.toLowerCase() === '!jpg'
+        if (isJpg) {
+            try {
+                await sock.sendMessage(from, { text: '⏳ Convertendo para JPG...' })
+                const { downloadMediaMessage } = require('@whiskeysockets/baileys')
+                const buffer = await downloadMediaMessage(msg, 'buffer', {}, { reuploadRequest: sock.updateMediaMessage })
+                const jpg = await sharp(buffer).jpeg({ quality: 90 }).toBuffer()
+                await sock.sendMessage(from, {
+                    image: jpg,
+                    mimetype: 'image/jpeg',
+                })
+            } catch (e) {
+                console.error(e)
+                await sock.sendMessage(from, { text: '❌ Erro ao converter para JPG.' })
+            }
+            return
+        }
+
+        // !png — converte imagem pra PNG
+        const isPng = type === 'imageMessage' && msg.message.imageMessage?.caption?.toLowerCase() === '!png'
+        if (isPng) {
+            try {
+                await sock.sendMessage(from, { text: '⏳ Convertendo para PNG...' })
+                const { downloadMediaMessage } = require('@whiskeysockets/baileys')
+                const buffer = await downloadMediaMessage(msg, 'buffer', {}, { reuploadRequest: sock.updateMediaMessage })
+                const png = await sharp(buffer).png().toBuffer()
+                await sock.sendMessage(from, {
+                    image: png,
+                    mimetype: 'image/png',
+                })
+            } catch (e) {
+                console.error(e)
+                await sock.sendMessage(from, { text: '❌ Erro ao converter para PNG.' })
+            }
+            return
+        }
+
+       // !pdf — converte imagem pra PDF ou texto pra PDF
+        const isPdf = type === 'imageMessage' && msg.message.imageMessage?.caption?.toLowerCase() === '!pdf'
+        const isPdfTexto = cmd.startsWith('!pdf ') && type !== 'imageMessage'
+
+        if (isPdfTexto) {
+            const texto = body.trim().slice(5).trim()
+            try {
+                await sock.sendMessage(from, { text: '⏳ Gerando PDF...' })
+                const PDFDocument = require('pdfkit')
+                const pdf = await new Promise((resolve, reject) => {
+                    const doc = new PDFDocument({ margin: 50 })
+                    const chunks = []
+                    doc.on('data', chunk => chunks.push(chunk))
+                    doc.on('end', () => resolve(Buffer.concat(chunks)))
+                    doc.on('error', reject)
+                    doc.fontSize(14).text(texto, { align: 'left' })
+                    doc.end()
+                })
+                await sock.sendMessage(from, {
+                    document: pdf,
+                    mimetype: 'application/pdf',
+                    fileName: 'texto.pdf'
+                })
+            } catch (e) {
+                console.error(e)
+                await sock.sendMessage(from, { text: '❌ Erro ao gerar PDF.' })
+            }
+            return
+        }
+
+        if (isPdf) {
+
+            try {
+                await sock.sendMessage(from, { text: '⏳ Convertendo para PDF...' })
+                const { downloadMediaMessage } = require('@whiskeysockets/baileys')
+                const buffer = await downloadMediaMessage(msg, 'buffer', {}, { reuploadRequest: sock.updateMediaMessage })
+                const { width, height } = await sharp(buffer).metadata()
+                const PDFDocument = require('pdfkit')
+                const pdf = await new Promise((resolve, reject) => {
+                    const doc = new PDFDocument({ size: [width, height], margin: 0 })
+                    const chunks = []
+                    doc.on('data', chunk => chunks.push(chunk))
+                    doc.on('end', () => resolve(Buffer.concat(chunks)))
+                    doc.on('error', reject)
+                    doc.image(buffer, 0, 0, { width, height })
+                    doc.end()
+                })
+                await sock.sendMessage(from, {
+                    document: pdf,
+                    mimetype: 'application/pdf',
+                    fileName: 'imagem.pdf'
+                })
+            } catch (e) {
+                console.error(e)
+                await sock.sendMessage(from, { text: '❌ Erro ao converter para PDF.' })
+            }
+            return
+        }
+
+        // !fundo — remove fundo da imagem
+        const isFundo = type === 'imageMessage' && msg.message.imageMessage?.caption?.toLowerCase() === '!fundo'
+        if (isFundo) {
+            try {
+                await sock.sendMessage(from, { text: '⏳ Removendo fundo...' })
+                const { downloadMediaMessage } = require('@whiskeysockets/baileys')
+                const buffer = await downloadMediaMessage(msg, 'buffer', {}, { reuploadRequest: sock.updateMediaMessage })
+                const formData = new FormData()
+                formData.append('image_file', new Blob([buffer]), 'image.png')
+                formData.append('size', 'auto')
+                const response = await fetch('https://api.remove.bg/v1.0/removebg', {
+                    method: 'POST',
+                    headers: { 'X-Api-Key': 'En3Gso6ygoQRs4wXz38dggpC' },
+                    body: formData
+                })
+                if (!response.ok) throw new Error('Erro na API remove.bg')
+                const result = Buffer.from(await response.arrayBuffer())
+                await sock.sendMessage(from, {
+                    image: result,
+                    mimetype: 'image/png',
+                })
+            } catch (e) {
+                console.error(e)
+                await sock.sendMessage(from, { text: '❌ Erro ao remover fundo.' })
             }
             return
         }

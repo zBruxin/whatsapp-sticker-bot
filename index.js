@@ -42,11 +42,13 @@ async function startBot() {
     sock.ev.on('messages.upsert', async ({ messages }) => {
         const msg = messages[0]
         if (!msg.message) return
+        if (msg.key.fromMe && Object.keys(msg.message)[0] === 'stickerMessage') return
 
         const from = msg.key.remoteJid
         const type = Object.keys(msg.message)[0]
         const body = msg.message.conversation || msg.message.extendedTextMessage?.text || ''
         const cmd = body.trim().toLowerCase()
+        console.log(`📨 [${type}] de ${from}: ${cmd || '(mídia)'}`)
 
         if (cmd === '!ping') {
             await sock.sendMessage(from, { text: '🏓 Pong!' })
